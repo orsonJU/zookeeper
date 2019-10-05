@@ -30,6 +30,7 @@ import org.slf4j.LoggerFactory;
 /**
  * interface for keeping Observers in sync
  */
+// 负责让所有的Observer同步数据
 public abstract class LearnerMaster {
 
     private static final Logger LOG = LoggerFactory.getLogger(LearnerMaster.class);

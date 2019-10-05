@@ -68,6 +68,7 @@ import org.slf4j.LoggerFactory;
  * "myid" that contains the server id as an ASCII decimal value.
  *
  */
+// Zookeeper启动类
 @InterfaceAudience.Public
 public class QuorumPeerMain {
 
@@ -85,6 +86,7 @@ public class QuorumPeerMain {
     public static void main(String[] args) {
         QuorumPeerMain main = new QuorumPeerMain();
         try {
+            // 读取zoo.cfg，并且初始化
             main.initializeAndRun(args);
         } catch (IllegalArgumentException e) {
             LOG.error("Invalid arguments, exiting abnormally", e);
@@ -112,12 +114,14 @@ public class QuorumPeerMain {
     }
 
     protected void initializeAndRun(String[] args) throws ConfigException, IOException, AdminServerException {
+        // zoo.cfg对应的java bean
         QuorumPeerConfig config = new QuorumPeerConfig();
         if (args.length == 1) {
             config.parse(args[0]);
         }
 
         // Start and schedule the the purge task
+        // 清理日志文件？
         DatadirCleanupManager purgeMgr = new DatadirCleanupManager(
             config.getDataDir(),
             config.getDataLogDir(),
@@ -125,6 +129,7 @@ public class QuorumPeerMain {
             config.getPurgeInterval());
         purgeMgr.start();
 
+        // 我们启动通常就只有1个参数，就是zoo.cfg配置文件
         if (args.length == 1 && config.isDistributed()) {
             runFromConfig(config);
         } else {
@@ -165,6 +170,7 @@ public class QuorumPeerMain {
                 secureCnxnFactory.configure(config.getSecureClientPortAddress(), config.getMaxClientCnxns(), config.getClientPortListenBacklog(), true);
             }
 
+            // 设置属性
             quorumPeer = getQuorumPeer();
             quorumPeer.setTxnFactory(new FileTxnSnapLog(config.getDataLogDir(), config.getDataDir()));
             quorumPeer.enableLocalSessions(config.areLocalSessionsEnabled());
@@ -214,7 +220,9 @@ public class QuorumPeerMain {
                 quorumPeer.setJvmPauseMonitor(new JvmPauseMonitor(config));
             }
 
+            // @main method，启动zk server?
             quorumPeer.start();
+            // 当前线程等待quorumPeer线程执行完毕，有点类似使用System.in.read()方法来达到阻塞线程一样
             quorumPeer.join();
         } catch (InterruptedException e) {
             // warn, but generally this is ok

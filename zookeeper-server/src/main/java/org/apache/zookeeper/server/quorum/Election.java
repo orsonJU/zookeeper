@@ -18,6 +18,7 @@
 
 package org.apache.zookeeper.server.quorum;
 
+// election使用的应该是策略模式
 public interface Election {
 
     Vote lookForLeader() throws InterruptedException;

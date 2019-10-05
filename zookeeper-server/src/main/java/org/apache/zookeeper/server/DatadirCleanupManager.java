@@ -39,6 +39,7 @@ public class DatadirCleanupManager {
     /**
      * Status of the dataDir purge task
      */
+    // 自己使用的enum，所以不应该独立出来一个类
     public enum PurgeTaskStatus {
         NOT_STARTED,
         STARTED,
@@ -122,6 +123,7 @@ public class DatadirCleanupManager {
         }
     }
 
+    // 静态内部类
     static class PurgeTask extends TimerTask {
 
         private File logsDir;

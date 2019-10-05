@@ -39,6 +39,7 @@ public class ZooKeeperThread extends Thread {
 
     public ZooKeeperThread(String threadName) {
         super(threadName);
+        // ZooKeeperThread最大的目的就是设置所有线程的UncaughtExceptionHandler，当出现没有捕获的异常时候进行日志记录
         setUncaughtExceptionHandler(uncaughtExceptionalHandler);
     }
 

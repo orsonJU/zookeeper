@@ -106,6 +106,7 @@ public class Leader extends LearnerMaster {
 
     final LeaderZooKeeperServer zk;
 
+    // 当前的zookeeper实例
     final QuorumPeer self;
 
     // VisibleForTesting
@@ -431,6 +432,7 @@ public class Leader extends LearnerMaster {
                     Socket s = null;
                     boolean error = false;
                     try {
+                        // 使用普通的IO socket
                         s = ss.accept();
 
                         // start with the initLimit, once the ack is processed
@@ -510,17 +512,23 @@ public class Leader extends LearnerMaster {
      * @throws InterruptedException
      */
     void lead() throws IOException, InterruptedException {
+        // fast leader election end time
+        // 设置选举时间
         self.end_fle = Time.currentElapsedTime();
         long electionTimeTaken = self.end_fle - self.start_fle;
         self.setElectionTimeTaken(electionTimeTaken);
+
+        // 看来ServerMetrics是用来存放多种统计数据的
         ServerMetrics.getMetrics().ELECTION_TIME.add(electionTimeTaken);
         LOG.info("LEADING - LEADER ELECTION TOOK - {} {}", electionTimeTaken, QuorumPeer.FLE_TIME_UNIT);
         self.start_fle = 0;
         self.end_fle = 0;
 
+        // MIST JMX的支持？
         zk.registerJMX(new LeaderBean(this, zk), self.jmxLocalPeerBean);
 
         try {
+            // 设置zab协议状态为discovery
             self.setZabState(QuorumPeer.ZabState.DISCOVERY);
             self.tick.set(0);
             zk.loadData();
@@ -529,6 +537,7 @@ public class Leader extends LearnerMaster {
 
             // Start thread that waits for connection requests from
             // new followers.
+            // 当被选举成为leader后，等待其他follower的数据同步请求？
             cnxAcceptor = new LearnerCnxAcceptor();
             cnxAcceptor.start();
 
@@ -631,6 +640,7 @@ public class Leader extends LearnerMaster {
              * you'll want to set it to something like 0xfffffff0 and then
              * start the quorum, run some operations and see the re-election.
              */
+            // idea 使用System#getProperty方式来入侵达到测试目的
             String initialZxid = System.getProperty("zookeeper.testingonly.initialZxid");
             if (initialZxid != null) {
                 long zxid = Long.parseLong(initialZxid);

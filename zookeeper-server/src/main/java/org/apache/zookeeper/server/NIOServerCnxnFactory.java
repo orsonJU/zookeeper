@@ -374,6 +374,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
          */
         public void run() {
             try {
+                // 典型NIO代码
                 while (!stopped) {
                     try {
                         select();

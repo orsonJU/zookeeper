@@ -1007,6 +1007,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
 
     @Override
     public synchronized void start() {
+        // 如果当前机子不属于集群中的机子，则抛出异常
         if (!getView().containsKey(myid)) {
             throw new RuntimeException("My id " + myid + " not in the peer list");
         }
@@ -1018,8 +1019,10 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
             LOG.warn("Problem starting AdminServer", e);
             System.out.println(e);
         }
+        // 开始选举，这里只是设置选举的策略
         startLeaderElection();
         startJvmPauseMonitor();
+        // 继承了ZookeeperThread，所以是一个线程，start会触发run方法
         super.start();
     }
 
@@ -1085,6 +1088,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
             throw re;
         }
 
+        // 根据选举类型来指定Leader选举的算法
         this.electionAlg = createElectionAlgorithm(electionType);
     }
 
@@ -1199,6 +1203,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
         Election le = null;
 
         //TODO: use a factory rather than a switch
+        // 策略模式应该是通过创建QuorumPeer的时候进行构造注入或者setter注入，现在看起来是内部的一个工厂模式
         switch (electionAlgorithm) {
         case 1:
             le = new AuthFastLeaderElection(this);
@@ -1232,6 +1237,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
     @SuppressWarnings("deprecation")
     protected Election makeLEStrategy() {
         LOG.debug("Initializing leader election protocol...");
+        // Leader选举的策略，在之前已经设置好了具体的策略，Election接口定义了LookForLeader的算法
         return electionAlg;
     }
 
@@ -1264,6 +1270,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
     public void run() {
         updateThreadName();
 
+        // 对JMX的支持？
         LOG.debug("Starting quorum peer");
         try {
             jmxQuorumBean = new QuorumBean(this);
@@ -1293,16 +1300,19 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
             jmxQuorumBean = null;
         }
 
+        // @Main method
         try {
             /*
              * Main loop
              */
             while (running) {
+                // 第一次启动的时候，默认的初始值是Looking
                 switch (getPeerState()) {
                 case LOOKING:
                     LOG.info("LOOKING");
                     ServerMetrics.getMetrics().LOOKING_COUNT.add(1);
 
+                    // 只读模式？
                     if (Boolean.getBoolean("readonlymode.enabled")) {
                         LOG.info("Attempting to start ReadOnlyZooKeeperServer");
 
@@ -1354,6 +1364,9 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
                                 shuttingDownLE = false;
                                 startLeaderElection();
                             }
+                            // 通过选举，设置最后的投票为当前的投票，此时leader已经选举完毕
+                            // 将会进入leading或者following状态
+                            // @Main method
                             setCurrentVote(makeLEStrategy().lookForLeader());
                         } catch (Exception e) {
                             LOG.warn("Unexpected exception", e);
@@ -1396,7 +1409,9 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
                 case LEADING:
                     LOG.info("LEADING");
                     try {
+                        // MIST，每次都要执行makeLeader？
                         setLeader(makeLeader(logFactory));
+                        // @main method
                         leader.lead();
                         setLeader(null);
                     } catch (Exception e) {
@@ -1489,6 +1504,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
      * ensemble.
      */
     public Map<Long, QuorumPeer.QuorumServer> getView() {
+        // 获取所有的集群中的机子
         return Collections.unmodifiableMap(getQuorumVerifier().getAllMembers());
     }
 
