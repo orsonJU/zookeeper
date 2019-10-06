@@ -136,13 +136,16 @@ public class QuorumCnxManager {
     /*
      * Mapping from Peer to Thread number
      */
+    // 针对每个peer，都有一个sendworker负责通信
     final ConcurrentHashMap<Long, SendWorker> senderWorkerMap;
+    // 每个myid对应一个blocking queue，这是发送给其他peer的queue
     final ConcurrentHashMap<Long, ArrayBlockingQueue<ByteBuffer>> queueSendMap;
     final ConcurrentHashMap<Long, ByteBuffer> lastMessageSent;
 
     /*
      * Reception queue
      */
+    // 所有其他的peer发送过来的投票都存放入这个receive quque
     public final ArrayBlockingQueue<Message> recvQueue;
     /*
      * Object to synchronize access to recvQueue
@@ -163,6 +166,7 @@ public class QuorumCnxManager {
     /*
      * Counter to count worker threads
      */
+    // 这里包括的是发送的以及接收的工作线程
     private AtomicInteger threadCnt = new AtomicInteger(0);
 
     /*
@@ -594,6 +598,7 @@ public class QuorumCnxManager {
             /*
              * Start a new connection if doesn't have one already.
              */
+            // 根据myid，获取QuorumCnxManager中的存放发送消息的blocking queue
             ArrayBlockingQueue<ByteBuffer> bq = queueSendMap.computeIfAbsent(sid, serverId -> new ArrayBlockingQueue<>(SEND_CAPACITY));
             addToSendQueue(bq, b);
             connectOne(sid);
@@ -615,15 +620,19 @@ public class QuorumCnxManager {
             return true;
         }
 
+        // 通过socket进行连接
         Socket sock = null;
         try {
             LOG.debug("Opening channel to server {}", sid);
             if (self.isSslQuorum()) {
+                // 如果开启使用SSL
                 sock = self.getX509Util().createSSLSocket();
             } else {
                 sock = new Socket();
             }
+            // 设置socket的属性
             setSockOpts(sock);
+            // 连接并设置超时时间
             sock.connect(electionAddr, cnxTO);
             if (sock instanceof SSLSocket) {
                 SSLSocket sslSock = (SSLSocket) sock;
@@ -671,19 +680,23 @@ public class QuorumCnxManager {
      */
     synchronized void connectOne(long sid) {
         if (senderWorkerMap.get(sid) != null) {
+            // 已经建立连接
             LOG.debug("There is a connection already for server {}", sid);
             return;
         }
+
         synchronized (self.QV_LOCK) {
             boolean knownId = false;
             // Resolve hostname for the remote server before attempting to
             // connect in case the underlying ip address has changed.
             self.recreateSocketAddresses(sid);
+            // myid和对应的peer server的信息
             Map<Long, QuorumPeer.QuorumServer> lastCommittedView = self.getView();
             QuorumVerifier lastSeenQV = self.getLastSeenQuorumVerifier();
             Map<Long, QuorumPeer.QuorumServer> lastProposedView = lastSeenQV.getAllMembers();
             if (lastCommittedView.containsKey(sid)) {
                 knownId = true;
+                // @main method， 根据myid获取背后真是的IP地址
                 if (connectOne(sid, lastCommittedView.get(sid).electionAddr)) {
                     return;
                 }
@@ -710,6 +723,7 @@ public class QuorumCnxManager {
 
     public void connectAll() {
         long sid;
+        // 遍历所有的myid，和每一个peer建立连接，只是建立连接，没有数据的处理
         for (Enumeration<Long> en = queueSendMap.keys(); en.hasMoreElements(); ) {
             sid = en.nextElement();
             connectOne(sid);
@@ -981,8 +995,10 @@ public class QuorumCnxManager {
      * soon as there is one available. If connection breaks, then opens a new
      * one.
      */
+    // 负责把sendQueue里面的投票发送出去给每一个peer
     class SendWorker extends ZooKeeperThread {
 
+        // 这里的sid是对应每个peer的myid
         Long sid;
         Socket sock;
         RecvWorker recvWorker;
@@ -1052,6 +1068,7 @@ public class QuorumCnxManager {
         }
 
         synchronized void send(ByteBuffer b) throws IOException {
+            // 纯粹的socket io操作
             byte[] msgBytes = new byte[b.capacity()];
             try {
                 b.position(0);
@@ -1067,6 +1084,7 @@ public class QuorumCnxManager {
 
         @Override
         public void run() {
+            // 当SendWorker开始工作的时候，计数+1
             threadCnt.incrementAndGet();
             try {
                 /**
@@ -1082,6 +1100,7 @@ public class QuorumCnxManager {
                  * message than that stored in lastMessage. To avoid sending
                  * stale message, we should send the message in the send queue.
                  */
+                // 是为每个peer创建一个写出的缓冲区。这里获取某个确定的peer的写缓冲区
                 ArrayBlockingQueue<ByteBuffer> bq = queueSendMap.get(sid);
                 if (bq == null || isSendQueueEmpty(bq)) {
                     ByteBuffer b = lastMessageSent.get(sid);
@@ -1096,12 +1115,14 @@ public class QuorumCnxManager {
             }
 
             try {
+                // @main method
                 while (running && !shutdown && sock != null) {
 
                     ByteBuffer b = null;
                     try {
                         ArrayBlockingQueue<ByteBuffer> bq = queueSendMap.get(sid);
                         if (bq != null) {
+                            // 移除发送队列中的第一个元素并返回，返回null如果没有元素
                             b = pollSendQueue(bq, 1000, TimeUnit.MILLISECONDS);
                         } else {
                             LOG.error("No queue of incoming messages for " + "server " + sid);
@@ -1109,6 +1130,7 @@ public class QuorumCnxManager {
                         }
 
                         if (b != null) {
+                            // 如果不为null，则把它更新为最后发送的消息，并把它发送出去
                             lastMessageSent.put(sid, b);
                             send(b);
                         }
@@ -1183,6 +1205,7 @@ public class QuorumCnxManager {
                      * Reads the first int to determine the length of the
                      * message
                      */
+                    // mist 感觉是自定义的协议啊
                     int length = din.readInt();
                     if (length <= 0 || length > PACKETMAXSIZE) {
                         throw new IOException("Received packet with invalid packet: " + length);
@@ -1192,6 +1215,7 @@ public class QuorumCnxManager {
                      */
                     final byte[] msgArray = new byte[length];
                     din.readFully(msgArray, 0, length);
+                    // 往receive queue中添加notification
                     addToRecvQueue(new Message(ByteBuffer.wrap(msgArray), sid));
                 }
             } catch (Exception e) {
@@ -1285,6 +1309,8 @@ public class QuorumCnxManager {
      *          Reference to the message to be inserted in the queue
      */
     public void addToRecvQueue(Message msg) {
+        // idea 加锁的原因只有一种，就是发生资源的同时修改问题
+        // 这里是FastLeaderElection类会从这里拿走消息，而QuorumCnxManager会把接收到的信息存入到这个blocking queue中
         synchronized (recvQLock) {
             if (recvQueue.remainingCapacity() == 0) {
                 try {

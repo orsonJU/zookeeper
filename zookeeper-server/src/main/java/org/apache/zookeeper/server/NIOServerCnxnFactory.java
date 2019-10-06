@@ -552,6 +552,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
      * This thread is responsible for closing stale connections so that
      * connections on which no session is established are properly expired.
      */
+    // idea： 发现zookeeper把所有自建线程抽象出一个超级父类ZooKeeperThread，ZooKeeperThread都唯一作用就是处理那些可能漏掉都异常
     private class ConnectionExpirerThread extends ZooKeeperThread {
 
         ConnectionExpirerThread() {
@@ -561,11 +562,13 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
         public void run() {
             try {
                 while (!stopped) {
+                    // 如果等待时间（还有多久将会超时）大于0，则睡眠然后进入下次循环
                     long waitTime = cnxnExpiryQueue.getWaitTime();
                     if (waitTime > 0) {
                         Thread.sleep(waitTime);
                         continue;
                     }
+                    // 将等待时间（还有多久将会超时）等于0都NIO连接关闭掉
                     for (NIOServerCnxn conn : cnxnExpiryQueue.poll()) {
                         ServerMetrics.getMetrics().SESSIONLESS_CONNECTIONS_EXPIRED.add(1);
                         conn.close(ServerCnxn.DisconnectReason.CONNECTION_EXPIRED);
@@ -625,6 +628,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
     private volatile boolean stopped = true;
     private ConnectionExpirerThread expirerThread;
     private AcceptThread acceptThread;
+    // 每个客户端，每个zookeeper都为其开启一个NIO selector来处理请求
     private final Set<SelectorThread> selectorThreads = new HashSet<SelectorThread>();
 
     @Override
@@ -734,13 +738,17 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
         }
         for (SelectorThread thread : selectorThreads) {
             if (thread.getState() == Thread.State.NEW) {
+                // 启动所有都selector
+                // MIST 如果是刚启动都时候，还没有客户端进行连接，这里应该是没有任何selectorThreads
                 thread.start();
             }
         }
         // ensure thread is started once and only once
+        // acceptThread负责处理请求都接收？
         if (acceptThread.getState() == Thread.State.NEW) {
             acceptThread.start();
         }
+        // expirerThread负责检测session超时？
         if (expirerThread.getState() == Thread.State.NEW) {
             expirerThread.start();
         }

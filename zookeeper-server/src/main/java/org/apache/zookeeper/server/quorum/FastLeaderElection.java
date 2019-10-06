@@ -489,6 +489,7 @@ public class FastLeaderElection implements Election {
             public void run() {
                 while (!stop) {
                     try {
+                        // fast leader election把投票放入sendqueue中，WorkerSender则从中拿出来执行
                         ToSend m = sendqueue.poll(3000, TimeUnit.MILLISECONDS);
                         if (m == null) {
                             continue;
@@ -984,10 +985,12 @@ public class FastLeaderElection implements Election {
                  * Sends more notifications if haven't received enough.
                  * Otherwise processes new notification.
                  */
+                // MIST 第一次连接的时候，应该没有收到任何消息
                 if (n == null) {
                     if (manager.haveDelivered()) {
                         sendNotifications();
                     } else {
+                        // 和其他peer建立连接
                         manager.connectAll();
                     }
 

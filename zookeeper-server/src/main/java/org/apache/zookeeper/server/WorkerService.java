@@ -47,10 +47,11 @@ public class WorkerService {
 
     private static final Logger LOG = LoggerFactory.getLogger(WorkerService.class);
 
+    // 从这里可以看出WorkerService内部是一个woker线程池，每个worker同时可以执行多个任务
     private final ArrayList<ExecutorService> workers = new ArrayList<ExecutorService>();
 
-    private final String threadNamePrefix;
-    private int numWorkerThreads;
+    private final String threadNamePrefix; // 每个线程的前缀，应该怎么命名
+    private int numWorkerThreads; // 相当于核心的线程数
     private boolean threadsAreAssignable;
     private long shutdownTimeoutMS = 5000;
 
@@ -177,9 +178,12 @@ public class WorkerService {
         }
 
         DaemonThreadFactory(String name, int firstThreadNum) {
+            // 线程的编号
             threadNumber.set(firstThreadNum);
             SecurityManager s = System.getSecurityManager();
+            // MIST thread group的作用是啥
             group = (s != null) ? s.getThreadGroup() : Thread.currentThread().getThreadGroup();
+            // 前缀
             namePrefix = name + "-";
         }
 
@@ -196,10 +200,13 @@ public class WorkerService {
 
     }
 
+    // 初始化工作线程
     public void start() {
         if (numWorkerThreads > 0) {
             if (threadsAreAssignable) {
                 for (int i = 1; i <= numWorkerThreads; ++i) {
+                    // idea 刚看到变量threadNamePrefix，就是要求所有创建的线程都需要有一个固定的前缀
+                    // 马上想到ThreadFactory，可以自定义扩展创建出来线程的某些属性，然后发现DaemonThreadFactory就是一个ThreadFactory的实现
                     workers.add(Executors.newFixedThreadPool(1, new DaemonThreadFactory(threadNamePrefix, i)));
                 }
             } else {
