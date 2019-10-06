@@ -509,7 +509,7 @@ public class FastLeaderElection implements Election {
              */
             void process(ToSend m) {
                 ByteBuffer requestBuffer = buildMsg(m.state.ordinal(), m.leader, m.zxid, m.electionEpoch, m.peerEpoch, m.configData);
-
+                // QuorumCnxManager负责发送
                 manager.toSend(m.sid, requestBuffer);
 
             }
