@@ -114,6 +114,7 @@ public class WorkerService {
             return;
         }
 
+        // idea因为WorkRequest不是一个标准的实现Runnable的类，所以这里包装一层，ScheduledWorkRequest是一个实现了Runnable的类
         ScheduledWorkRequest scheduledWorkRequest = new ScheduledWorkRequest(workRequest);
 
         // If we have a worker thread pool, use that; otherwise, do the work
@@ -152,6 +153,7 @@ public class WorkerService {
                     workRequest.cleanup();
                     return;
                 }
+                // ScheduledWorkRequest调用WorkRequet的doWork方法
                 workRequest.doWork();
             } catch (Exception e) {
                 LOG.warn("Unexpected exception", e);

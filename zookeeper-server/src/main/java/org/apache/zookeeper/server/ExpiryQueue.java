@@ -82,15 +82,21 @@ public class ExpiryQueue<E> {
      *                 changed, or null if unchanged
      */
     public Long update(E elem, int timeout) {
+        // 计算某个client都下次timeout时间
         Long prevExpiryTime = elemMap.get(elem);
         long now = Time.currentElapsedTime();
         Long newExpiryTime = roundToNextInterval(now + timeout);
 
+        // 优化
         if (newExpiryTime.equals(prevExpiryTime)) {
             // No change, so nothing to update
             return null;
         }
 
+
+        /*
+         *  idea expiryMap维护者某个超时时间（date-time），会有多少都客户端会超时（cnxn client）
+         */
         // First add the elem to the new expiry time bucket in expiryMap.
         Set<E> set = expiryMap.get(newExpiryTime);
         if (set == null) {

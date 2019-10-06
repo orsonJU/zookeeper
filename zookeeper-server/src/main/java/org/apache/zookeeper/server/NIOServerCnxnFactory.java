@@ -112,6 +112,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
      * of code shared by the AcceptThread (which selects on the listen socket)
      * and SelectorThread (which selects on client connections) classes.
      */
+    // AbstractSelectThread并没有实现run方法
     private abstract class AbstractSelectThread extends ZooKeeperThread {
 
         protected final Selector selector;
@@ -120,6 +121,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
             super(name);
             // Allows the JVM to shutdown even if this thread is still running.
             setDaemon(true);
+            // 父类中维护了一个selector
             this.selector = Selector.open();
         }
 
@@ -176,6 +178,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
         private final ServerSocketChannel acceptSocket;
         private final SelectionKey acceptKey;
         private final RateLogger acceptErrorLogger = new RateLogger(LOG);
+        // MIST 这个是基于selector模式下，一个acceptThread管理多有selector
         private final Collection<SelectorThread> selectorThreads;
         private Iterator<SelectorThread> selectorIterator;
         private volatile boolean reconfiguring = false;
@@ -183,15 +186,19 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
         public AcceptThread(ServerSocketChannel ss, InetSocketAddress addr, Set<SelectorThread> selectorThreads) throws IOException {
             super("NIOServerCxnFactory.AcceptThread:" + addr);
             this.acceptSocket = ss;
+            // 注册accpet事件
             this.acceptKey = acceptSocket.register(selector, SelectionKey.OP_ACCEPT);
+            // selector之selector
             this.selectorThreads = Collections.unmodifiableList(new ArrayList<SelectorThread>(selectorThreads));
             selectorIterator = this.selectorThreads.iterator();
         }
 
+        // @main method
         public void run() {
             try {
                 while (!stopped && !acceptSocket.socket().isClosed()) {
                     try {
+                        // NIO
                         select();
                     } catch (RuntimeException e) {
                         LOG.warn("Ignoring unexpected runtime exception", e);
@@ -216,6 +223,8 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
 
         private void select() {
             try {
+                // NIO selector，事件有accept|read|write等
+                // 这个是存在与父类AbstractSelectThread中的selector
                 selector.select();
 
                 Iterator<SelectionKey> selectedKeys = selector.selectedKeys().iterator();
@@ -226,6 +235,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
                     if (!key.isValid()) {
                         continue;
                     }
+                    // 如果有新等客户单连入
                     if (key.isAcceptable()) {
                         if (!doAccept()) {
                             // If unable to pull a new connection off the accept
@@ -282,13 +292,19 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
 
                 LOG.debug("Accepted socket connection from {}", sc.socket().getRemoteSocketAddress());
 
+                // 设置成non blocking
                 sc.configureBlocking(false);
 
                 // Round-robin assign this connection to a selector thread
                 if (!selectorIterator.hasNext()) {
                     selectorIterator = selectorThreads.iterator();
                 }
+                /*
+                 *  父类AbstractSelectThread是一个NIO的selector，当接收到一个请求后，需要和该客户端连接建立一个NIO连接
+                 *  所以每个client都交给一个子的NIO selectorThread来处理。
+                 */
                 SelectorThread selectorThread = selectorIterator.next();
+                // 让一个全新的SelectorThread来处理这个客户端。
                 if (!selectorThread.addAcceptedConnection(sc)) {
                     throw new IOException("Unable to add connection to selector queue"
                                           + (stopped ? " (shutdown in progress)" : ""));
@@ -345,6 +361,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
          * with the selector.
          */
         public boolean addAcceptedConnection(SocketChannel accepted) {
+            // 把接收到的客户端socket channel放入队列中
             if (stopped || !acceptedQueue.offer(accepted)) {
                 return false;
             }
@@ -412,6 +429,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
 
         private void select() {
             try {
+                // 这里是在客户端已经连接后，所以事件主要是read|write
                 selector.select();
 
                 Set<SelectionKey> selected = selector.selectedKeys();
@@ -426,6 +444,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
                         cleanupSelectionKey(key);
                         continue;
                     }
+                    // 无论写|读，都有一个handleIO方法来处理
                     if (key.isReadable() || key.isWritable()) {
                         handleIO(key);
                     } else {
@@ -444,12 +463,14 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
          */
         private void handleIO(SelectionKey key) {
             IOWorkRequest workRequest = new IOWorkRequest(this, key);
+            // MIST 这里是获取了客户端的cnxFactory？
             NIOServerCnxn cnxn = (NIOServerCnxn) key.attachment();
 
             // Stop selecting this key while processing on its
             // connection
             cnxn.disableSelectable();
             key.interestOps(0);
+            // 每次处理客户端都请求，都更新客户端都session超时都时间
             touchCnxn(cnxn);
             workerPool.schedule(workRequest);
         }
@@ -500,7 +521,9 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
      */
     private class IOWorkRequest extends WorkerService.WorkRequest {
 
+        // NIO selector thread
         private final SelectorThread selectorThread;
+        // selector key：需要处理的客户端的事件
         private final SelectionKey key;
         private final NIOServerCnxn cnxn;
 
@@ -510,6 +533,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
             this.cnxn = (NIOServerCnxn) key.attachment();
         }
 
+        // @main method
         public void doWork() throws InterruptedException {
             if (!key.isValid()) {
                 selectorThread.cleanupSelectionKey(key);
@@ -807,6 +831,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
      * @param cnxn
      */
     public void touchCnxn(NIOServerCnxn cnxn) {
+        // cnxn.getSessionTimeout来获取config里面设置都超时时间
         cnxnExpiryQueue.update(cnxn, cnxn.getSessionTimeout());
     }
 

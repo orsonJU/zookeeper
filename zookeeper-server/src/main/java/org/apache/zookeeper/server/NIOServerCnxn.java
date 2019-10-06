@@ -195,6 +195,7 @@ public class NIOServerCnxn extends ServerCnxn {
     }
 
     public void disableSelectable() {
+        // set selectable false
         selectable.set(false);
     }
 
@@ -316,11 +317,15 @@ public class NIOServerCnxn extends ServerCnxn {
 
                 return;
             }
+
+            // NIO的读取
             if (k.isReadable()) {
                 int rc = sock.read(incomingBuffer);
                 if (rc < 0) {
                     handleFailedRead();
                 }
+
+                // MIST 感觉是处理一个半读的case？
                 if (incomingBuffer.remaining() == 0) {
                     boolean isPayload;
                     if (incomingBuffer == lenBuffer) { // start of next request
@@ -340,6 +345,7 @@ public class NIOServerCnxn extends ServerCnxn {
                     }
                 }
             }
+            // NIO的写
             if (k.isWritable()) {
                 handleWrite(k);
 
@@ -734,7 +740,7 @@ public class NIOServerCnxn extends ServerCnxn {
     @Override
     public void setSessionTimeout(int sessionTimeout) {
         this.sessionTimeout = sessionTimeout;
-        factory.touchCnxn(this);
+        factory.touchCnxn(this); // 设置session timeout都时候，先计算session过期都时间
     }
 
     @Override
